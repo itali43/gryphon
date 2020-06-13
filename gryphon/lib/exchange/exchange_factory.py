@@ -25,6 +25,7 @@ ALL_EXCHANGE_KEYS = [
     'gemini_eth_usd',
     'gemini_ltc_usd',
     'gemini_zec_usd',
+    'bancor_bat_eth',
 ]
 
 HISTORICAL_EXCHANGE_KEYS = [
@@ -219,6 +220,15 @@ def get_api_wrapper_class_by_name(exchange_name):
     elif exchange_name == 'POLONIEX_ETH_BTC':
         from gryphon.lib.exchange.poloniex_eth_btc import PoloniexETHBTCExchange
         return PoloniexETHBTCExchange
+    elif exchange_name == 'COINBASE_ETH_USD':
+        from gryphon.lib.exchange.coinbase_eth_usd import CoinbaseETHUSDExchange
+        return CoinbaseETHUSDExchange
+    elif exchange_name == 'COINBASE_ETH_BTC':
+        from gryphon.lib.exchange.coinbase_eth_btc import CoinbaseETHBTCExchange
+        return CoinbaseETHBTCExchange
+    elif exchange_name == 'BANCOR_BAT_ETH':
+        from gryphon.lib.exchange.bancor_bat_eth import BancorBATETHExchange
+        return BancorBATETHExchange
     else:
         raise exceptions.ExchangeNotIntegratedError(exchange_name)
 

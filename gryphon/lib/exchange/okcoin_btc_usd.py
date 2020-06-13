@@ -2,6 +2,12 @@
 from collections import OrderedDict
 import hashlib
 
+import base64
+import hmac
+import requests
+import json
+
+
 import cdecimal
 from cdecimal import Decimal
 from delorean import Delorean, parse
@@ -25,7 +31,7 @@ class OKCoinBTCUSDExchange(ExchangeAPIWrapper):
         self.friendly_name = u'OKCoin BTC-USD'
         self.currency = u'USD'
         self.volume_currency = 'BTC'
-        self.base_url = 'https://www.okcoin.com/api/v1'
+        self.base_url = 'https://www.okcoin.com/api'
         self.bid_string = 'buy'
         self.ask_string = 'sell'
 
@@ -89,7 +95,9 @@ class OKCoinBTCUSDExchange(ExchangeAPIWrapper):
 
     def resp(self, req):
         response = super(OKCoinBTCUSDExchange, self).resp(req)
-
+        print "response:"
+        print response
+        print "--------------------------------------------"
         error_code = response.get('error_code', None)
 
         if error_code:
@@ -170,11 +178,11 @@ class OKCoinBTCUSDExchange(ExchangeAPIWrapper):
         try:
             self.api_key
             self.secret
-            self.partner_id
+            # self.partner_id
         except AttributeError:
             self.api_key = self._load_env('OKCOIN_BTC_USD_API_KEY')
             self.secret = self._load_env('OKCOIN_BTC_USD_API_SECRET')
-            self.partner_id = self._load_env('OKCOIN_BTC_USD_PARTNER_ID')
+            # self.partner_id = self._load_env('OKCOIN_BTC_USD_PARTNER_ID')
 
     def auth_request(self, req_method, url, request_args):
         self.load_creds()
@@ -194,6 +202,69 @@ class OKCoinBTCUSDExchange(ExchangeAPIWrapper):
             'sign': signature[0],
         })
 
+
+
+
+
+
+
+
+    def signature(timestamp, method, request_path, body, secret_key):
+        """
+        Version 3-- Helper function, written by OKCoin, for building the auth signature.
+        """
+        if str(body) == '{}' or str(body) == 'None':
+            body = ''
+        message = str(timestamp) + str.upper(method) + request_path + str(body)
+        mac = hmac.new(bytes(secret_key, encoding='utf8'), bytes(message, encoding='utf-8'), digestmod='sha256')
+        d = mac.digest()
+        return base64.b64encode(d)
+
+
+    # set request header
+    def get_header(api_key, sign, timestamp, passphrase):
+        CONTENT_TYPE = 'Content-Type'
+        OK_ACCESS_KEY = 'OK-ACCESS-KEY'
+        OK_ACCESS_SIGN = 'OK-ACCESS-SIGN'
+        OK_ACCESS_TIMESTAMP = 'OK-ACCESS-TIMESTAMP'
+        OK_ACCESS_PASSPHRASE = 'OK-ACCESS-PASSPHRASE'
+        APPLICATION_JSON = 'application/json'
+
+        header = dict()
+        header[CONTENT_TYPE] = APPLICATION_JSON
+        header[OK_ACCESS_KEY] = api_key
+        header[OK_ACCESS_SIGN] = sign
+        header[OK_ACCESS_TIMESTAMP] = str(timestamp)
+        header[OK_ACCESS_PASSPHRASE] = passphrase
+        return header
+
+
+    def parse_params_to_str(params):
+        url = '?'
+        for key, value in params.items():
+            url = url + str(key) + '=' + str(value) + '&'
+
+        return url[0:-1]
+
+
+
+    def test_toast(self):
+        self.load_creds()
+
+        base_url = 'https://www.okcoin.com'
+        request_path = '/api/account/v3/currencies'
+        # set request header
+        header = get_header(self.api_key, signature('timestamp', 'GET', request_path, self.secret), 'timestamp', 'elliottreal')
+        # do request
+        response = requests.get(base_url + request_path, headers=header)
+        # json
+        print(response.json())
+
+
+
+
+
+
     def get_okcoin_signature(self, params, secretKey):
         """
         Helper function, written by OKCoin, for building the auth signature.
@@ -202,17 +273,25 @@ class OKCoinBTCUSDExchange(ExchangeAPIWrapper):
 
         for key in sorted(params.keys()):
             sign += key + '=' + str(params[key]) + '&'
+        print sign
+        print "okcoin sig"
+        print hashlib.md5(sign + 'secret_key=' + secretKey).hexdigest().upper()
+        # sign=CryptoJS.enc.Base64.stringify(CryptoJS.HmacSHA256(timestamp + 'GET' + '/users/self/verify', secretKey))
 
         return hashlib.md5(sign + 'secret_key=' + secretKey).hexdigest().upper()
 
 
     def balance_req(self):
-        return self.req('post', '/userinfo.do')
+        return self.req('get', '/account/v3/wallet')
 
+    def get_balance(self):
+        print "tested"
+        req = self.balance_req()
+        return self.balance_resp(req)
 
     def balance_resp(self, req):
         response = self.resp(req)
-
+        print response
         try:
             balances = response['info']['funds']
 
@@ -531,4 +610,5 @@ class OKCoinBTCUSDExchange(ExchangeAPIWrapper):
                 orders[order_id] = volume_filled
 
         return orders
+
 
