@@ -15,6 +15,7 @@ import urllib
 
 import cdecimal
 from cdecimal import Decimal
+from operator import itemgetter
 
 from gryphon.lib.exchange import exceptions
 from gryphon.lib.exchange import order_types
@@ -23,6 +24,7 @@ from gryphon.lib.logger import get_logger
 from gryphon.lib.models.exchange import Balance
 from gryphon.lib.money import Money
 from gryphon.lib.time_parsing import parse
+# from gryphon.lib.exchange import binance_client
 
 logger = get_logger(__name__)
 
@@ -54,6 +56,7 @@ class BinanceBTCUSDExchange(ExchangeAPIWrapper):
         self.market_depth_url = '/depth'
         self.ticker_url = '/ticker/24hr'
         self.orderbook_url = '/depth'
+        self.balance_url = '/balance'
 
         if configuration:
             self.configure(configuration)
@@ -63,7 +66,7 @@ class BinanceBTCUSDExchange(ExchangeAPIWrapper):
         try:
             self._wallet_id
         except AttributeError:
-            self._wallet_id = self._load_env('ITBIT_BTC_USD_WALLET_ID')
+            self._wallet_id = self._load_env('BINANCE_BTC_USD_WALLET_ID')
 
         return self._wallet_id
 
@@ -81,19 +84,19 @@ class BinanceBTCUSDExchange(ExchangeAPIWrapper):
         print requested
         return self.resp(requested)
         
-    def req(self, req_method, url, **kwargs):
-        # Our auth_request method expects the params in the url.
-        assert '?' not in url
+    # def req(self, req_method, url, **kwargs):
+    #     # Our auth_request method expects the params in the url.
+    #     assert '?' not in url
 
-        if 'params' in kwargs:
-            if kwargs['params']: # Check that it's not empty.
-                url += '?' + urllib.urlencode(kwargs['params'])
+    #     if 'params' in kwargs:
+    #         if kwargs['params']: # Check that it's not empty.
+    #             url += '?' + urllib.urlencode(kwargs['params'])
 
-            del kwargs['params']
+    #         del kwargs['params']
 
-        req = super(BinanceBTCUSDExchange, self).req(req_method, url, **kwargs)
+    #     req = super(BinanceBTCUSDExchange, self).req(req_method, url, **kwargs)
 
-        return req
+    #     return req
 
     def resp(self, req):
         response = super(BinanceBTCUSDExchange, self).resp(req)
@@ -198,11 +201,47 @@ class BinanceBTCUSDExchange(ExchangeAPIWrapper):
                 'status': raw_order['status']
             }
 
+
+
+
+
             orders.append(order)
 
         return orders
 
+    def get_balance_req(self):
+        self.load_creds()
+        timestamp = int(time.time() * 1000)
+        print timestamp
+        payload = {"timestamp" : timestamp}
+        sig = self._generate_signature(payload)
+        payload["signature"] = sig
+        print "bal payload BELOW"
+        print payload
+        return self.req(
+            'get',
+            self.balance_url,
+            no_auth=False,
+            params=payload,
+        )
+    def get_balance_resp(self, req):
+        response = self.resp(req)
+
+        # balance = Balance()
+        # balance['BTC'] = btc_available
+        # balance['USD'] = usd_available
+
+        return response
+
     # Common Exchange Methods
+
+    def sig(self):
+        re = "symbol=LTCBTC&side=BUY&type=LIMIT&timeInForce=GTC&quantity=1&price=0.1&recvWindow=5000&timestamp=1499827319559"
+        sec = "NhqPtmdSJYdKjVHjA7PZj4Mge3R5YNiP1e3UZjInClVN65XAbvqqM6A7H5fATj0j"
+        m = hmac.new(sec.encode('utf-8'), re.encode('utf-8'), hashlib.sha256)
+        return m.hexdigest()
+
+
 
 
     def _generate_signature(self, data):
@@ -211,29 +250,34 @@ class BinanceBTCUSDExchange(ExchangeAPIWrapper):
         """
         ordered_data = self._order_params(data)
         query_string = '&'.join(["{}={}".format(d[0], d[1]) for d in ordered_data])
-        m = hmac.new(self.API_SECRET.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256)
+        print ordered_data
+        print query_string
+        print ordered_data
+        m = hmac.new(self.secret.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256)
         return m.hexdigest()
 
     def _order_params(self, data):
         """
         Convert params to list with signature as last element
         """
+        print "orderpar"
+        print data
         has_signature = False
         params = []
         for key, value in data.items():
             if key == 'signature':
+                print value
                 has_signature = True
             else:
                 params.append((key, value))
+                print params
         # sort parameters by key
         params.sort(key=itemgetter(0))
         if has_signature:
             params.append(('signature', data['signature']))
+        print params
+        print "endpar"
         return params
-
-
-
-
 
     def auth_request(self, req_method, url, request_args):
         """
@@ -243,32 +287,60 @@ class BinanceBTCUSDExchange(ExchangeAPIWrapper):
             self.api_key
             self.secret
         except AttributeError:
-            self.api_key = self._load_env('ITBIT_BTC_USD_API_KEY')
-            self.secret = self._load_env('ITBIT_BTC_USD_API_SECRET').encode('utf-8')
+            self.api_key = self._load_env('BINANCE_BTC_USD_API_KEY')
+            self.secret = self._load_env('BINANCE_BTC_USD_API_SECRET')
 
-        timestamp = int(round(time.time() * 1000))
-        nonce = self.nonce
-
+        timestamp = int(time.time() * 1000)
+        signature = self._generate_signature(request_args)
         body = ''
+        print request_args
+        print "auth_request Args  - -  ABOVE"
 
-        if 'data' in request_args:
-            body = json.dumps(request_args['data'])
+        # if 'timestamp' not in request_args:
+        #     request_args['timestamp'] = timestamp
+        #     print "auth request Timestamp added"
+        #     print request_args
 
-        request_args['data'] = body
+        # if 'signature' not in request_args:
+        #     request_args['signature'] = signature
+        #     print "auth request SIGNATURE added"
+        #     print request_args
 
-        message = self._auth_create_message(req_method, url, body, nonce, timestamp)
 
-        sig = self._auth_sign_message(message, nonce, url, self.secret)
+        # Keeping it all in params for binance
+        # if 'data' in request_args:
+        #     body = json.dumps(request_args['data'])
+        # request_args['data'] = body
+
+        # message = self._auth_create_message(req_method, url, body, nonce, timestamp)
+
+        # sig = self._auth_sign_message(message, nonce, url, self.secret)
 
         if 'headers' not in request_args:
             request_args['headers'] = {}
 
         headers = request_args['headers']
 
-        headers['Authorization'] = self.api_key + ':' + sig
-        headers['X-Auth-Timestamp'] = str(timestamp)
-        headers['X-Auth-Nonce'] = str(nonce)
-        headers['Content-Type'] = 'application/json'
+
+        headers.update({'Accept': 'application/json',
+                                'User-Agent': 'binance/python',
+                                'X-MBX-APIKEY': self.api_key})
+
+
+        # headers['Authorization'] = self.api_key + ':' + sig
+        # headers['X-Auth-Timestamp'] = str(timestamp)
+        # headers['X-Auth-Nonce'] = str(nonce)
+        # headers['Content-Type'] = 'application/json'
+
+
+    def load_creds(self):
+        try:
+            self.api_key
+            self.secret
+        except AttributeError:
+            self.api_key = self._load_env('BINANCE_BTC_USD_API_KEY')
+            self.secret = self._load_env('BINANCE_BTC_USD_API_SECRET')
+
 
     def _auth_create_message(self, verb, url, body, nonce, timestamp):
         return json.dumps(
@@ -289,38 +361,7 @@ class BinanceBTCUSDExchange(ExchangeAPIWrapper):
 
         return sig
 
-    def get_balance_req(self):
-        try:
-            self.user_id
-        except AttributeError:
-            self.user_id = self._load_env('ITBIT_BTC_USD_USER_ID')
 
-        return self.req('get', '/wallets/%s' % self.wallet_id)
-
-    def get_balance_resp(self, req):
-        response = self.resp(req)
-        raw_balances = response['balances']
-
-        btc_available = None
-        usd_available = None
-
-        for raw_balance in raw_balances:
-            if raw_balance['currency'] == 'XBT':
-                btc_available = Money(raw_balance['availableBalance'], 'BTC')
-            elif raw_balance['currency'] == 'USD':
-                usd_available = Money(raw_balance['availableBalance'], 'USD')
-
-        if btc_available is None or usd_available is None:
-            raise exceptions.ExchangeAPIErrorException(
-                self,
-                'missing expected balances',
-            )
-
-        balance = Balance()
-        balance['BTC'] = btc_available
-        balance['USD'] = usd_available
-
-        return balance
 
     def get_ticker_req(self, verify=True):
         payload = {"symbol": "BTCUSDT"}
@@ -558,11 +599,7 @@ class BinanceBTCUSDExchange(ExchangeAPIWrapper):
 
     def fiat_withdrawal_fee(self, withdrawal_amount):
         """
-        Itbit fee is from their documentation, and an extra $15 is being charged to us
-        before it shows up in our bank account (as of the September 2016), so I assume
-        that's an intermediary fee.
-
-        The fee should be a flat $50 on withdrawals > $10k, but we'll see.
+        Binance fee is from their documentation
         """
         fee = Money('0', 'USD')
 
