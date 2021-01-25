@@ -9,6 +9,7 @@ __pycache__/
 # Distribution / packaging
 .Python
 env/
+envs/
 build/
 develop-eggs/
 dist/
@@ -16,6 +17,7 @@ downloads/
 eggs/
 .eggs/
 lib64/
+mysqlcred.md
 parts/
 sdist/
 var/
