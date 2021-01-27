@@ -1,7 +1,52 @@
 # -*- coding: utf-8 -*-
 """
 Binance BTC / USD
-USD is USDT
+USD is USDC
+
+
+
+
+Error Message Key:
+-------------------------
+
+Error message return                    ||  Description 
+--------------------------------------------------------------------------------------------------------
+"Filter failure: PRICE_FILTER"	            price is too high, too low, and/or not following
+                                             the tick size rule for the symbol.
+                                             
+"Filter failure: PERCENT_PRICE"	            price is X% too high or X% too low 
+                                             from the average weighted price over the last Y minutes.
+                                             
+"Filter failure: LOT_SIZE"              	quantity is too high, too low, 
+                                             and/or not following the step size rule for the symbol.
+                                             
+"Filter failure: MIN_NOTIONAL"             	price * quantity is too low to be a valid order
+                                             for the symbol.
+
+"Filter failure: ICEBERG_PARTS"	            ICEBERG order would break into too many parts; 
+                                             icebergQty is too small.
+                                             
+"Filter failure: MARKET_LOT_SIZE"	        MARKET order's quantity is too high, too low, 
+                                             and/or not following the step size rule for the symbol.
+                                             
+"Filter failure: MAX_POSITION"	            The account's position has reached the maximum defined limit.
+                                             This is composed of the sum of the balance of the base asset,
+                                             and the sum of the quantity of all open BUYorders.
+                                             
+"Filter failure: MAX_NUM_ORDERS"	        Account has too many open orders on the symbol.
+
+"Filter failure: MAX_ALGO_ORDERS"	        Account has too many open stop loss and/or take profit
+                                             orders on the symbol.
+                                             
+"Filter failure: MAX_NUM_ICEBERG_ORDERS"	Account has too many open iceberg orders on the symbol.
+
+"Filter failure: EXCHANGE_MAX_NUM_ORDERS"	Account has too many open orders on the exchange.
+
+"Filter failure: EXCHANGE_MAX_ALGO_ORDERS"	Account has too many open stop loss and/or take profit 
+                                             orders on the exchange.
+
+
+
 
 """
 
@@ -36,12 +81,12 @@ class BinanceBTCUSDExchange(ExchangeAPIWrapper):
         self.friendly_name = u'Binance BTC-USD'
         self.base_url = 'https://api.binance.com'
         self.currency = 'USD'
-        self.currency_symbol = 'USDT'  # for alt. pair subclasses
+        self.currency_symbol = 'USDC'  # for alt. pair subclasses
         self.volume_currency = 'BTC'
         self.bid_string = 'BUY'
         self.ask_string = 'SELL'
         self.nonce = 1
-        self.ticker_symbols = 'BTC'
+        self.ticker_symbols = 'BTCUSDC'
 
         # Configurables with defaults.
         self.market_order_fee = Decimal('0.0004')
@@ -56,15 +101,18 @@ class BinanceBTCUSDExchange(ExchangeAPIWrapper):
         self.use_cached_orderbook = False
 
         self.ping_url = '/wapi/v3/systemStatus.html'
-        self.balance_url = '/sapi/v1/accountSnapshot' 
+        self.pair_details = '/api/v3/exchangeInfo'
 
-        self.market_depth_url = '/depth'
-        self.ticker_url = '/ticker/24hr'
-        self.orderbook_url = '/depth'
-        self.position_url = '/positionRisk'
+        self.balance_url = '/api/v3/account' 
+
+        self.ticker_url = '/api/v3/ticker/24hr'
+        self.orderbook_url = '/api/v3/depth'
+        
         self.trades_url = '/userTrades'
-        self.order_url = '/order'
-        self.open_orders_url = '/openOrders'
+        
+        self.order_url = '/api/v3/order'
+        self.open_orders_url = '/api/v3/openOrders'
+        
         self.transactions_url = '/allOrders'
 
         if configuration:
@@ -129,23 +177,50 @@ class BinanceBTCUSDExchange(ExchangeAPIWrapper):
 
     # Exchange Trading Interface implementations.
 
+
+
+    
     def get_balance_req(self):
-        return self.req('get', self.balance_url)
+        """
+        Get Balance for currencies
+        
+        Return format:
+        {"balances": [{"asset": "BTC", "free": "4723846.89208129", 
+        "locked": "0.00000000"}, {...}],
+        ...}
+        https://binance-docs.github.io/apidocs/spot/en/#account-information-user_data
+        """
+
+        return self.req(
+            'get',
+            self.balance_url,
+            no_auth=False,
+        )
 
     def get_balance_resp(self, req):
         """
-            Balance grabs the BTC Amount and USDT Amount
+            Balance grabs the BTC Amount and USD Amount
         """
         resp = self.resp(req)
-        # position_data = self.resp(req[1])
         balance = Balance()
-        print('bal:\n\n %s \n\n' % self.resp(req))
-        # try:
-        #     for pos in position_data:
-        #         if pos['symbol'] == self.ticker_symbols:
-        #             balance[self.volume_currency] = Money(pos['positionAmt'], self.volume_currency)
-        # except KeyError:
-        #     raise exceptions.ExchangeAPIErrorException(self, 'malformed response')
+        
+        response = self.resp(req)
+
+        try:
+            for bal in response['balances']:
+                # vol currency
+                if bal['asset'] == self.volume_currency:
+                    
+                    balance[self.volume_currency] = Money(bal['free'], self.volume_currency)
+                
+                # currency (using currency_symbol to match to USDC b/c of 3 letter symbols limitation)
+                if bal['asset'] == self.currency_symbol:  
+                    
+                    balance[self.currency] = Money(bal['free'], self.currency)
+                
+                
+        except KeyError:
+            raise exceptions.ExchangeAPIErrorException(self, 'malformed response')
 
         # try:
         #     for account in account_data["assets"]:
@@ -155,21 +230,21 @@ class BinanceBTCUSDExchange(ExchangeAPIWrapper):
         # except KeyError:
         #     raise exceptions.ExchangeAPIErrorException(self, 'malformed response')
 
-        # return balance
+        return balance
 
     def get_ticker_req(self, verify=True):
-        payload = {"symbol": "BTCUSDT"}
+        payload = {"symbol": "BTCUSDC"}
         return self.req(
             'get',
             self.ticker_url,
             no_auth=True,
-            verify=verify,
+            # verify=verify,
             params=payload,
         )
 
     def get_ticker_resp(self, req):
         response = self.resp(req)
-
+        print(response)
         return {
             'high': Money(response['highPrice'], 'USD'),
             'low': Money(response['lowPrice'], 'USD'),
@@ -178,7 +253,7 @@ class BinanceBTCUSDExchange(ExchangeAPIWrapper):
         }
 
     def _get_orderbook_from_api_req(self, verify=True):
-        payload = {"symbol": "BTCUSDT"}
+        payload = {"symbol": "BTCUSDC"}
         return self.req(
             'get',
             self.orderbook_url,
@@ -271,9 +346,16 @@ class BinanceBTCUSDExchange(ExchangeAPIWrapper):
 
         """
         resp = self.resp(req)
-        order_id = '%s' % resp['orderId']
+        print(resp)
+        print('++++++')
 
+        try: 
+            order_id = '%s' % resp['orderId']
+        except KeyError:
+            successed = False
         return {'success': True, 'order_id': order_id}
+
+            
 
     def get_open_orders_req(self):
         params = {
@@ -284,32 +366,10 @@ class BinanceBTCUSDExchange(ExchangeAPIWrapper):
 
     def get_open_orders_resp(self, req):
         """
-        Response looks like:
-        [
-            {u'avgPrice': u'0.00000',
-            u'clientOrderId': u'web_js4D4BgazhSKaaZh2lKM',
-            u'closePosition': False,
-            u'cumQuote': u'0',
-            u'executedQty': u'0',
-            u'orderId': 5140874260,
-            u'origQty': u'0.011',
-            u'origType': u'LIMIT',
-            u'positionSide': u'BOTH',
-            u'price': u'9098.19',
-            u'reduceOnly': False,
-            u'side': u'BUY',
-            u'status': u'NEW',
-            u'stopPrice': u'0',
-            u'symbol': u'BTCUSDT',
-            u'time': 1592389149824,
-            u'timeInForce': u'GTC',
-            u'type': u'LIMIT',
-            u'updateTime': 1592389156352,
-            u'workingType': u'CONTRACT_PRICE'}
-        ]
+        Get Details of an order
         """
         raw_orders = self.resp(req)
-
+    
         orders = []
 
         for raw_order in raw_orders:
@@ -347,38 +407,19 @@ class BinanceBTCUSDExchange(ExchangeAPIWrapper):
 
     def get_order_details_resp(self, req, order_id):
         """
-        {
-            u'avgPrice': u'0.00000',
-            u'clientOrderId': u'web_js4D4BgazhSKaaZh2lKM',
-            u'closePosition': False,
-            u'cumQuote': u'0',
-            u'executedQty': u'0',
-            u'orderId': 5140874260,
-            u'origQty': u'0.011',
-            u'origType': u'LIMIT',
-            u'positionSide': u'BOTH',
-            u'price': u'9098.19',
-            u'reduceOnly': False,
-            u'side': u'BUY',
-            u'status': u'NEW',
-            u'stopPrice': u'0',
-            u'symbol': u'BTCUSDT',
-            u'time': 1592389149824,
-            u'timeInForce': u'GTC',
-            u'type': u'LIMIT',
-            u'updateTime': 1592389149824,
-            u'workingType': u'CONTRACT_PRICE'
-        }
+            Get Order Details
+            https://binance-docs.github.io/apidocs/spot/en/#query-order-user_data
         """
         order_details = self.resp(req)
         oid = '%s' % order_details["orderId"]
         time_created = order_details["time"]
+        print(order_details)
 
         side = self._order_mode_to_const(order_details["side"])
 
         total_volume_currency = order_details["origQty"]
         vol_currency_final = Money(total_volume_currency, self.volume_currency)
-        price_calc = Decimal(order_details["origQty"]) * Decimal(order_details["avgPrice"])
+        price_calc = Decimal(order_details["origQty"]) * Decimal(order_details["price"])
         total_price_currency = '%.2f' % price_calc
         time_created = round(Decimal(order_details["time"]) / Decimal(1000))
 
@@ -418,7 +459,7 @@ class BinanceBTCUSDExchange(ExchangeAPIWrapper):
         successed = False
         try:
             tried = response['status']
-            if tried == 'CANCELED':
+            if tried == 'CANCELED' or 'CANCELLED':
                 successed = True
         except KeyError:
             successed = False
@@ -464,7 +505,7 @@ class BinanceBTCUSDExchange(ExchangeAPIWrapper):
 
                 trade_dict = {
                     'time': trade["time"],
-                    'trade_id': str(trade['orderId']),  # none given by Binance F
+                    'trade_id': str(trade['orderId']),  # none given by Binancef
                     'order_id': str(trade['orderId']),
                     'btc': btc,
                     'fiat': fiat,
@@ -502,14 +543,12 @@ class BinanceBTCUSDExchange(ExchangeAPIWrapper):
         requested = self.req('get', self.ping_url, no_auth=True)
         return self.resp(requested)
 
-    def get_depth(self):
-        payload = {'symbol': self.ticker_symbols}
 
-        requested = self.req(
-            'get',
-            self.market_depth_url,
-            no_auth=True,
-            params=payload,
-        )
-
-        return self.resp(requested)
+    def get_pair_details(self):
+        requested = self.req('get', self.pair_details, no_auth=True)
+        resp = self.resp(requested)
+        for i in resp['symbols']:
+            if i['symbol'] == self.ticker_symbols:
+                return i
+            
+        
