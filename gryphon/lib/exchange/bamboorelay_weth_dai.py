@@ -35,17 +35,22 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
 
         self.name = u'BAMBOO_ETH_DAI'
         self.friendly_name = u'Bamboo ETH-DAI'
-        self.base_url = 'https://rest.bamboorelay.com/ropsten/0x/' # 'https://rest.bamboorelay.com/main/0x/'
-        self.test_base_url = 'https://rest.bamboorelay.com/ropsten/0x/'
-        self.infura_base_url_end = '.infura.io/v3/aebfaef19dbd46049f262526b269ec4d'
+        
+        # Bamboo Base URLs
+        self.bamboo_main_base_url = 'https://rest.bamboorelay.com/main/0x' # 'https://rest.bamboorelay.com/main/0x/'
+        self.bamboo_test_base_url = 'https://rest.bamboorelay.com/ropsten/0x'
+        
+        # Infura Base URLs
+        self.infura_main_base_url = 'https://mainnet.infura.io/v3/aa86ab760dbc4b08994603ff64545382'
+        self.infura_test_base_url = 'https://ropsten.infura.io/v3/aa86ab760dbc4b08994603ff64545382'
 
         self.currency = 'DAI'
         self.currency_symbol = 'DAI'  # TODO: Recheck/refactor
         self.volume_currency = 'ETH'
-        self.bid_string = 'BUY'
-        self.ask_string = 'SELL'
+        self.bid_string = 'BID'
+        self.ask_string = 'ASK'
         self.nonce = 1
-        self.ticker_symbols = 'WETHDAI'
+        self.ticker_symbols = 'DAI-WETH'
         
         # Mainnet or Ropsten
         self.network = "ropsten"
@@ -65,11 +70,8 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
         # Bamboo endings
         self.ping_url = '/orders/fees'
         self.market_depth_url = '/depth'
-        self.ticker_url = '/ticker/24hr'
+        self.ticker_url = '/markets/%s/ticker' % self.ticker_symbols
         self.orderbook_url = '/depth'
-        
-        # Infura endings
-        self.balance_url = '' 
 
 
         self.position_url = '/positionRisk'
@@ -85,32 +87,37 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
 
     def auth_request(self, req_method, url, request_args):
         """
-        This uses Infura to authorize for Bamboo
+        Authorize for Bamboo, in progress/dep
         """
         self.load_creds()
         print("auth-a-ka-zam!")
 
         
-        req_method = req_method.upper()
-        timestamp = unicode(int(round(time.time())))
+        # req_method = req_method.upper()
+        # timestamp = unicode(int(round(time.time())))
 
-        # This has already been dumped to json by req().
-        body = request_args['data']
+        # # This has already been dumped to json by req().
+        # body = request_args['data']
+        
+        # if self.network == 'main':
+        #     self.auth_url = self.bamboo_main_base_url
+        # else:
+        #     self.auth_url = self.bamboo_test_base_url 
+        # print(self.auth_url)
+        # endpoint = url.replace(self.auth_url, '')
+        # print(endpoint)
+        # data = timestamp + req_method + endpoint + body
+        # key = base64.b64decode(self.secret)
+        # sig = base64.b64encode(hmac.new(key, data, hashlib.sha256).digest())
 
-        endpoint = url.replace(self.base_url, '')
+        # try:
+        #     headers = request_args['headers']
+        # except KeyError:
+        #     headers = request_args['headers'] = {}
 
-        data = timestamp + req_method + endpoint + body
-        key = base64.b64decode(self.secret)
-        sig = base64.b64encode(hmac.new(key, data, hashlib.sha256).digest())
-
-        try:
-            headers = request_args['headers']
-        except KeyError:
-            headers = request_args['headers'] = {}
-
-        headers.update({
-            'Content-Type': 'application/json'
-        })
+        # headers.update({
+        #     'Content-Type': 'application/json'
+        # })
 
 
     def load_creds(self):
@@ -141,6 +148,23 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
 
         return signature
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     def resp(self, req):
         response = super(BambooETHDAIExchange, self).resp(req)
         return response
@@ -152,27 +176,53 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
     
     def get_balance_req(self):
         """
-        Get Balance for from Wallet
+        Get Balances for from Wallet via Infura
         """
+        self.balance_url = ':\'('
         self.load_creds()
-        url = 'https://' + self.network + self.infura_base_url_end + self.infura_project_key
-        print(url)
-        body = {"jsonrpc": "2.0", "id": 1, "method": "eth_blockNumber", "params": []}
+        if self.network == 'main':
+            self.balance_url = self.infura_main_base_url
+        else:
+            self.balance_url = self.infura_test_base_url 
+
+
+        print('infura URL for balance')
+        print(self.balance_url)
+        body = {
+            "jsonrpc": "2.0", 
+            "id": 1, 
+            "method": "eth_blockNumber",
+             "params": [self.api_key, "latest"],
+             }
         # payload="{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"eth_blockNumber\", \"params\": []}"
         headers = {
         'Content-Type': 'application/json'
         }
+        params = []
         params = {
-            'ADDRESS': self.api_key,
-            'BLOCK PARAMETER': 'latest'
+            'ADDRESS': self.api_key
         }
+        params['BLOCK PARAMETER'] = 'latest'
+        
         print("self.balance")
-
-        return requests.request("POST", url, headers=headers, data=payload, params=params)
+        print(self.balance_url)
+        print(headers)
+        print(body)
+        print(params)
+        print("---")
+        return self.req(
+            'post',
+            self.balance_url,
+            headers=headers,
+            data=body,
+            params=params,
+            # no_auth=False,
+        )
+        # return requests.request("POST", url, headers=headers, data=body, params=params)
 
     def get_balance_resp(self, req):
         """
-            Balance grabs the BTC Amount and USD Amount
+            Balance grabs the WETH (treated as ETH in gryphon) Amount and DAI Amount
         """
         resp = self.resp(req)
         print(";)")
@@ -201,23 +251,39 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
         # return balance
 
     def get_ticker_req(self, verify=True):
-        payload = {"symbol": "BTCUSDC"}
+        self.base = ''
+        self.load_creds()
+        if self.network == 'main':
+            self.base = self.bamboo_main_base_url
+        else:
+            self.base = self.bamboo_test_base_url 
+
+        url = self.base + self.ticker_url
+        print(url)
+        
         return self.req(
             'get',
-            self.ticker_url,
-            no_auth=True,
+            url,
+            # no_auth=False,
             # verify=verify,
-            params=payload,
+            # params=payload,
         )
 
     def get_ticker_resp(self, req):
         response = self.resp(req)
         print(response)
+        
+        # {u'ticker': {u'bestBid': u'0.0010000000000000000000',
+        #              u'price': u'0.0010000000000000000000',
+        #               u'bestAsk': u'0.0000000000000000000000', 
+        #               u'spreadPercentage': u'0.00000000', 
+        #               u'size': u'0.050000000000000000'
+        #               }, u'id': u'DAI-WETH'}
         return {
-            'high': Money(response['highPrice'], 'USD'),
-            'low': Money(response['lowPrice'], 'USD'),
-            'last': Money(response['lastPrice'], 'USD'),
-            'volume': Money(response['volume'], 'BTC')
+            'high': Money(response['ticker']['bestAsk'], 'ETH'),
+            'low': Money(response['ticker']['bestBid'], 'ETH'),
+            'last': Money(response['ticker']['price'], 'ETH'),
+            'volume': Money('0', 'ETH'),
         }
 
     def _get_orderbook_from_api_req(self, verify=True):
@@ -326,70 +392,112 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
             
 
     def get_open_orders_req(self):
-        params = {
-            'symbol': self.ticker_symbols,
-        }
+        
+        self.load_creds()
 
-        return self.req('get', self.open_orders_url, params=params)
+        self.base = ''
+
+        if self.network == 'main':
+            self.base = self.bamboo_main_base_url
+        else:
+            self.base = self.bamboo_test_base_url 
+        
+        self.open_orders_url = '/accounts/%s/orders' % self.api_key # eth addr
+        print(self.open_orders_url)
+        url = self.base + self.open_orders_url
+        print(url)
+        
+        return self.req(
+            'get',
+            url,
+            # no_auth=False,
+            # verify=verify,
+            # params=payload,
+        )
+
 
     def get_open_orders_resp(self, req):
         """
         Get Details of an order
         """
         raw_orders = self.resp(req)
-    
+        # print(raw_orders)
         orders = []
 
         for raw_order in raw_orders:
-            mode = self._order_mode_to_const(raw_order['side'])
-            volume = Money(raw_order['origQty'], self.volume_currency)
-            volume_filled = Money(raw_order['executedQty'], self.volume_currency)
-            vol_remain_raw = volume.amount - volume_filled.amount
-            volume_remaining = '%.8f' % vol_remain_raw
+            print(raw_order['state'])
+            if raw_order['state'] == 'OPEN':
+                mode = self._order_mode_to_const(raw_order['type'])
+                
+                vol = Decimal(raw_order['signedOrder']['makerAssetAmount'])/1000000000000000000
+                volume = Money(vol, self.volume_currency)
+                
+                # "filledBaseTokenAmount": "2581.78487402",
+                # "filledQuoteTokenAmount": "11.41607699",
 
-            order = {
-                'mode': mode,
-                'id': '%s' % raw_order['orderId'],
-                'price': Money(raw_order['price'], self.currency),
-                'volume': volume,
-                'volume_remaining': Money(volume_remaining, self.volume_currency),
-                'status': raw_order['status'],
-            }
-            orders.append(order)
+
+                order = {
+                    'mode': mode,
+                    'id': '%s' % raw_order['orderHash'],
+                    'price': Money(raw_order['price'], self.currency),
+                    'volume': volume,
+                    'volume_remaining': Money(raw_order['remainingBaseTokenAmount'], self.volume_currency),
+                    'status': raw_order['state'],
+                }
+                orders.append(order)
 
         return orders
 
     def get_order_details(self, order_id):
-        oid = '%s' % order_id
+        oid = '%s' % order_id # Order Hash
         req = self.get_order_details_req(oid)
         return self.get_order_details_resp(req, oid)
 
     def get_order_details_req(self, order_id):
-        oid_int = int(order_id)
-        params = {
-            'symbol': self.ticker_symbols,
-            'orderId': oid_int,
-        }
+        """
+            OrderHash is used as OrderID, retrieves details.
+        """
+        self.load_creds()
 
-        return self.req('get', self.order_url, params=params)
+        self.base = ''
+
+        if self.network == 'main':
+            self.base = self.bamboo_main_base_url
+        else:
+            self.base = self.bamboo_test_base_url 
+        
+        self.order_details_url = '/orders/%s' % order_id # eth addr
+        print(self.order_details_url)
+        details_url = self.base + self.order_details_url
+        print(details_url)
+        
+        return self.req(
+            'get',
+            details_url,
+            # no_auth=False,
+            # verify=verify,
+            # params=payload,
+        )
+
 
     def get_order_details_resp(self, req, order_id):
         """
-            Get Order Details
-            https://binance-docs.github.io/apidocs/spot/en/#query-order-user_data
+            Get Order Details Response
         """
         order_details = self.resp(req)
-        oid = '%s' % order_details["orderId"]
-        time_created = order_details["time"]
+        oid = '%s' % order_details["orderHash"]
         print(order_details)
 
-        side = self._order_mode_to_const(order_details["side"])
+        side = self._order_mode_to_const(order_details["type"])
 
-        total_volume_currency = order_details["origQty"]
+        # 🚧🚧🚧 TODO: this is wrong, it is remainingVol, it should be what is left to fill (eth)
+        total_volume_currency = order_details["remainingBaseTokenAmount"]
         vol_currency_final = Money(total_volume_currency, self.volume_currency)
-        price_calc = Decimal(order_details["origQty"]) * Decimal(order_details["price"])
-        total_price_currency = '%.2f' % price_calc
-        time_created = round(Decimal(order_details["time"]) / Decimal(1000))
+        
+        # 🚧🚧🚧 TODO: similar as above but with DAI
+        total_price_currency = '%.2f' % Decimal(order_details["remainingQuoteTokenAmount"])
+        
+        time_created = round(Decimal(order_details["createdTimestamp"]) / Decimal(1000))
 
         data = {
             'time_created': time_created,
@@ -398,6 +506,7 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
             'fiat_total': Money(total_price_currency, self.currency),
             'trades': [],
         }
+        print(order_details)
         return data
 
     def get_multi_order_details(self, order_ids):
