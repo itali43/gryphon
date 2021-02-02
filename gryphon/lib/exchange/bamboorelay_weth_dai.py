@@ -58,9 +58,6 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
         self.ask_string = 'ASK'
         self.nonce = 1
         self.ticker_symbols = 'DAI-WETH'
-        
-        # Mainnet or Ropsten
-        self.network = "ropsten"
 
         # Configurables with defaults.
         self.market_order_fee = Decimal('0.0004')
@@ -97,7 +94,6 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
         Authorize for Bamboo, in progress/dep
         """
         self.load_creds()
-        print("auth-a-ka-zam!")
 
         
         # req_method = req_method.upper()
@@ -106,7 +102,7 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
         # # This has already been dumped to json by req().
         # body = request_args['data']
         
-        # if self.network == 'main':
+        # if self.network == 'mainnet':
         #     self.auth_url = self.bamboo_main_base_url
         # else:
         #     self.auth_url = self.bamboo_test_base_url 
@@ -128,15 +124,16 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
 
 
     def load_creds(self):
-        # Get which network first main / test TODO: Try-
+        # Get which network first main / test 
         try: 
             self.network
+            print("network made it")
             
         except AttributeError:
-            
             self.network = self._load_env('NETWORK')
+            print("network REFRESHED!")
         
-        print("you have entered the %s network.  There is no spoon." % self.network)
+        print("you have entered the %s network.  Welcome." % self.network)
         try:
             self.infura_project_key
             self.secret
@@ -144,6 +141,7 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
             
             self.vol_currency_contract_addr
             self.currency_contract_addr
+            
         except AttributeError:
             
             if self.network == 'mainnet':
@@ -177,20 +175,6 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     def resp(self, req):
         response = super(BambooETHDAIExchange, self).resp(req)
         return response
@@ -208,104 +192,127 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
         """
         self.balance_url = ':\'('
         self.load_creds()
-        if self.network == 'main':
+        if self.network == 'mainnet':
             self.balance_url = self.infura_main_base_url
         else:
             self.balance_url = self.infura_test_base_url 
 
 
-        print('infura URL for balance')
-        print(self.balance_url)
-        # body = {"jsonrpc": "2.0", "id": 1, "method": "eth_getBalance", "params": []}
+
         body = {"jsonrpc":"2.0","method":"eth_getBalance","params": "['0x20598860Da775F63ae75E1CD2cE0D462B8CEe4C7', 'latest']","id":1}
-        # {
-        #     "jsonrpc": "2.0", 
-        #     "id": 1, 
-        #     "method": "eth_blockNumber",
-        #      "params": [],
-        #      }
+
                
-        # curl https://ropsten.infura.io/v3/aa86ab760dbc4b08994603ff64545382 -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_getBalance","params": ["0x20598860Da775F63ae75E1CD2cE0D462B8CEe4C7", "latest"],"id":1}'
         headers = {'Content-Type': 'application/json'}
         params = []
         params = {
             'ADDRESS': self.api_key
         }
         params['BLOCK PARAMETER'] = 'latest'
-        # print("---")
-        # print(float.fromhex('0x78a086347be3b80'))
-        # print(int('0x78a086347be3b80', 16))
-        print("---")
 
+        # NOTE: pip install pycryptodome (added for keccak)
+        # NOTE: Error add (handled some by exceptions in resp):        
+        # "error": { "message": "execution reverted: Dai/insufficient-balance",....
 
-        # NOTE: pip install pycryptodome
-
-        print('4fe79ee6aac6d045a7e0d9dcda6fcde48e73c08c8ff8cf91e147c463f87a7182')
-        print("4 of them:")
-        value = "4fe79ee6aac6d045a7e0d9dcda6fcde48e73c08c8ff8cf91e147c463f87a7182".encode("hex")
-        print(value)
-        print(value[:4])
+        # convert using keccak then take first four bytes as a signature (func Selector)
+        # Left the process in for replication if necessary for other calls
         
-        k = keccak.new(digest_bits=256)
-        k.update('balanceOf(address)')
-        print k.hexdigest()
+        # k = keccak.new(digest_bits=256)
+        # k.update('balanceOf(address)')
+        # print k.hexdigest()
+        # value = k.hexdigest()
+        # print(value)
+        # funcSelector = self.sub_bytes(value, 60, 64) # first 4 bytes
+        # print("0x70a08231 == This is funcSelector")
+        
+        
+        # formulate data to send in eth_call for the Volume Currency (WETH)
+        walletAddress = self.api_key[2:]
+        sendit = "0x70a08231" + "000000000000000000000000" + walletAddress
+        # print(sendit)
+        
+        data = '{"jsonrpc":"2.0","method":"eth_call","params": [{"to": "%s","data": "%s"}, "latest"],"id":1}' % (self.vol_currency_contract_addr, sendit)
 
-        # print("self.balance")
-        # print(self.balance_url)
-        # print(headers)
-        # print(body)
-        # print(params)
-        # print("---")
-        # # 0x20598860Da775F63ae75E1CD2cE0D462B8CEe4C7
-        # print(self.currency_contract_addr)
-        # print("^curr    v vol")
-        # print(self.vol_currency_contract_addr)
-        data = '{"jsonrpc":"2.0","method":"eth_getBalance","params": ["%s", "latest"],"id":1}' % self.api_key
 
-        return self.req(
+        # formulate data to send in eth_call for the Currency (DAI)
+        walletAddress = self.api_key[2:] # remove 0x on public eth addr
+        sendit_cur = "0x70a08231" + "000000000000000000000000" + walletAddress
+        # print(sendit_cur)
+        
+        data_cur = '{"jsonrpc":"2.0","method":"eth_call","params": [{"to": "%s","data": "%s"}, "latest"],"id":1}' % (self.currency_contract_addr, sendit_cur)
+        
+
+        
+        # payload retrieves normal ETH balance
+        # data = '{"jsonrpc":"2.0","method":"eth_getBalance","params": ["%s", "latest"],"id":1}' % self.api_key
+
+        return [self.req( # volume currency (WETH)
             'post',
             self.balance_url,
             headers=headers,
             data=data,
             params=params,
             # no_auth=False,
-        )
-        # return requests.request("POST", url, headers=headers, data=body, params=params)
+        ), self.req( # currency (DAI)
+            'post',
+            self.balance_url,
+            headers=headers,
+            data=data_cur,
+            params=params,
+        )]
 
     def get_balance_resp(self, req):
         """
             Balance grabs the WETH (treated as ETH in gryphon) Amount and DAI Amount
         """
-        resp = self.resp(req)
-        print(";)")
-        # print(resp)
+        resp_vol = self.resp(req[0])
+        resp_cur = self.resp(req[1])
+        
+        bal_vol = 0.0
+        bal_cur = 0.0
+        
+        try:
+            # Vol Currency Balance
+            naked_vol = resp_vol["result"][2:].lstrip("0")
+            # divide by 10^18 b/c eth and dai are both 18 decimal places
+            bal_vol = float.fromhex(naked_vol)/(10**18) # WETH
+            
+        except:
+            print("error in balance vol currency request: %s" % resp_vol['error'])
+            raise exceptions.ExchangeAPIErrorException(self, 'malformed response')
 
-        # balance = Balance()
+        try:
+            # Currency Balance 
+            naked_cur = resp_cur["result"][2:].lstrip("0")            
+            # divide by 10^18 b/c eth and dai are both 18 decimal places
+            bal_cur = float.fromhex(naked_cur)/(10**18) # DAI            
+        except:
+            print("error in balance currency request: %s" % resp_cur['error'])
+            raise exceptions.ExchangeAPIErrorException(self, 'malformed response')
+        
+        # create balance 
+        balance = Balance()
         
         # response = self.resp(req)
 
-        # try:
-        #     for bal in response['balances']:
-        #         # vol currency
-        #         if bal['asset'] == self.volume_currency:
-                    
-        #             balance[self.volume_currency] = Money(bal['free'], self.volume_currency)
+        try:
+            # vol currency
+            
                 
-        #         # currency (using currency_symbol to match to USDC b/c of 3 letter symbols limitation)
-        #         if bal['asset'] == self.currency_symbol:  
-                    
-        #             balance[self.currency] = Money(bal['free'], self.currency)
-                
-                
-        # except KeyError:
-        #     raise exceptions.ExchangeAPIErrorException(self, 'malformed response')
-        return resp
+            balance[self.volume_currency] = Money(str(bal_vol), self.volume_currency)
+            
+            # currency (using currency_symbol to match to USDC b/c of 3 letter symbols limitation)
+            balance[self.currency] = Money(str(bal_cur), self.currency)
+            
+        except:
+            print("There has been an error in extracting balances.")
+        
+        return balance
         # return balance
 
     def get_ticker_req(self, verify=True):
         self.base = ''
         self.load_creds()
-        if self.network == 'main':
+        if self.network == 'mainnet':
             self.base = self.bamboo_main_base_url
         else:
             self.base = self.bamboo_test_base_url 
@@ -344,13 +351,12 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
         
         self.base = ''
         
-        if self.network == 'main':
+        if self.network == 'mainnet':
             self.base = self.bamboo_main_base_url
         else:
             self.base = self.bamboo_test_base_url 
 
         url = self.base + self.orderbook_url
-        print(url)
         
         return self.req(
             'get',
@@ -362,34 +368,20 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
         
     def _get_orderbook_from_api_resp(self, req):
         response = self.resp(req)
-        print("response==============>>>>>>>>>")
-        print(response["asks"])
-        print ("order returns below----")
 
-        print(response["asks"][0])
-        print ("hash returns below----")
-
-        print(response["asks"][0]["orderHash"])
         asks = []
         bids = []
         
         for i in response["asks"]:
-            # print("iiiiiiiiiiii -- %s" % i)
-            print(i["orderHash"])
-            print("================================================a price")
+
             ask_price = i['price']
-            print(ask_price)
-            print("================================================a rem vol")
-            ask_volume = i['remainingBaseTokenAmount']    
-            print(ask_volume)             
+            ask_volume = i['remainingBaseTokenAmount']   
+             
             asks.append(Order(ask_price, ask_volume, self, Order.ASK))
             
         for i in response["bids"]:
-            # print("iiiiiiiiiiii -- %s" % i)
-            print(i["orderHash"])
+
             bid_price = i['price']
-            print(ask_price)
-            print("================================================b rem vol")
             bid_volume = i['remainingBaseTokenAmount']    
             
             bids.append(Order(bid_price, bid_volume, self, Order.BID))
@@ -412,7 +404,6 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
     # def get_orderbook_resp(self, req, volume_limit=None):
 
     #     raw_orderbook = self._get_orderbook_from_api_resp(req)
-    #     print(raw_orderbook)
         # parsed_orderbook = self.parse_orderbook(raw_orderbook, volume_limit)
         # parsed_orderbook['time_parsed'] = Delorean().epoch
 
@@ -462,28 +453,7 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
 
     def place_order_resp(self, req):
         """
-            {
-                u'avgPrice': u'0.00000',
-                u'clientOrderId': u'VZleNDFwm62ScMM4hB5FTh',
-                u'closePosition': False,
-                u'cumQty': u'0',
-                u'cumQuote': u'0',
-                u'executedQty': u'0',
-                u'orderId': 5372915335,
-                u'origQty': u'0.030',
-                u'origType': u'LIMIT',
-                u'positionSide': u'BOTH',
-                u'price': u'8000',
-                u'reduceOnly': False,
-                u'side': u'BUY',
-                u'status': u'NEW',
-                u'stopPrice': u'0',
-                u'symbol': u'BTCUSDT',
-                u'timeInForce': u'GTC',
-                u'type': u'LIMIT',
-                u'updateTime': 1593136966400,
-                u'workingType': u'CONTRACT_PRICE'
-            }
+        
 
         """
         resp = self.resp(req)
@@ -504,22 +474,17 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
 
         self.base = ''
 
-        if self.network == 'main':
+        if self.network == 'mainnet':
             self.base = self.bamboo_main_base_url
         else:
             self.base = self.bamboo_test_base_url 
         
         self.open_orders_url = '/accounts/%s/orders' % self.api_key # eth addr
-        print(self.open_orders_url)
         url = self.base + self.open_orders_url
-        print(url)
         
         return self.req(
             'get',
             url,
-            # no_auth=False,
-            # verify=verify,
-            # params=payload,
         )
 
 
@@ -528,11 +493,9 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
         Get Details of an order
         """
         raw_orders = self.resp(req)
-        # print(raw_orders)
         orders = []
 
         for raw_order in raw_orders:
-            print(raw_order['state'])
             if raw_order['state'] == 'OPEN':
                 
                 mode = self._order_mode_to_const(raw_order['type'])
@@ -564,15 +527,13 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
 
         self.base = ''
 
-        if self.network == 'main':
+        if self.network == 'mainnet':
             self.base = self.bamboo_main_base_url
         else:
             self.base = self.bamboo_test_base_url 
         
         self.order_details_url = '/orders/%s' % order_id # eth addr
-        print(self.order_details_url)
         details_url = self.base + self.order_details_url
-        print(details_url)
         
         return self.req(
             'get',
@@ -727,83 +688,6 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
     
     
     
-
-    
-    
-    
-    def print_test(self):
-        test = {
-            "asks": [
-                {
-                    "orderHash": "0xe70bb0bec29653916019a25adef366c89452b28f0a9e9343518a7db915f752e7",
-                    "type": "ASK",
-                    "state": "OPEN",
-                    "baseTokenAddress": "0xc778417e063141139fce010982780140aa0cd5ab",
-                    "quoteTokenAddress": "0xad6d458402f60fd3bd25163575031acdce07538d",
-                    "remainingBaseTokenAmount": "1.188000000000000000",
-                    "remainingQuoteTokenAmount": "0.099000000000000000",
-                    "price": "0.0833333333333333333333",
-                    "createdDate": "2021-01-27 09:02:18",
-                    "createdTimestamp": 1611738138,
-                    "signedOrder": {
-                        "chainId": 3,
-                        "makerAddress": "0x20598860da775f63ae75e1cd2ce0d462b8cee4c7",
-                        "takerAddress": "0x0000000000000000000000000000000000000000",
-                        "feeRecipientAddress": "0xc898fbee1cc94c0ff077faa5449915a506eff384",
-                        "senderAddress": "0x6ff734d96104965c9c1b0108f83abc46e6e501df",
-                        "makerAssetAmount": "1188000000000000000",
-                        "takerAssetAmount": "99000000000000000",
-                        "makerFee": "0",
-                        "takerFee": "0",
-                        "expirationTimeSeconds": "1614157335",
-                        "salt": "30369389491136134095282347606066855723300838345918049504034733331795587913383",
-                        "makerAssetData": "0xf47261b0000000000000000000000000ad6d458402f60fd3bd25163575031acdce07538d",
-                        "takerAssetData": "0xf47261b0000000000000000000000000c778417e063141139fce010982780140aa0cd5ab",
-                        "makerFeeAssetData": "0x",
-                        "takerFeeAssetData": "0x",
-                        "exchangeAddress": "0xfb2dd2a1366de37f7241c83d47da58fd503e2c64",
-                        "signature": "0x1ccf16878870189f8606721672f199d93e7966d86e1b36a304630b40202498d2b600a09d3fb7fd6fe69378abc9351e1776e76616a8b9a4bd7be1aba5d0c359624c02"
-                    },
-                    "executionType": "LIMIT"
-                }
-            ],
-            "bids": [
-                {
-                    "orderHash": "0x60f15562fa061d09ab1eb917ec138e1d3de4afac9bddd0138cad8c801e3a0b4f",
-                    "type": "BID",
-                    "state": "OPEN",
-                    "baseTokenAddress": "0xc778417e063141139fce010982780140aa0cd5ab",
-                    "quoteTokenAddress": "0xad6d458402f60fd3bd25163575031acdce07538d",
-                    "remainingBaseTokenAmount": "2.000000000000000000",
-                    "remainingQuoteTokenAmount": "0.100000000000000000",
-                    "price": "0.0500000000000000000000",
-                    "createdDate": "2021-01-27 08:39:35",
-                    "createdTimestamp": 1611736775,
-                    "signedOrder": {
-                        "chainId": 3,
-                        "makerAddress": "0x20598860da775f63ae75e1cd2ce0d462b8cee4c7",
-                        "takerAddress": "0x0000000000000000000000000000000000000000",
-                        "feeRecipientAddress": "0xc898fbee1cc94c0ff077faa5449915a506eff384",
-                        "senderAddress": "0x6ff734d96104965c9c1b0108f83abc46e6e501df",
-                        "makerAssetAmount": "100000000000000000",
-                        "takerAssetAmount": "2000000000000000000",
-                        "makerFee": "0",
-                        "takerFee": "0",
-                        "expirationTimeSeconds": "1614155868",
-                        "salt": "34733911596946362661512030767678331602429256854551678650817146167036345130259",
-                        "makerAssetData": "0xf47261b0000000000000000000000000c778417e063141139fce010982780140aa0cd5ab",
-                        "takerAssetData": "0xf47261b0000000000000000000000000ad6d458402f60fd3bd25163575031acdce07538d",
-                        "makerFeeAssetData": "0x",
-                        "takerFeeAssetData": "0x",
-                        "exchangeAddress": "0xfb2dd2a1366de37f7241c83d47da58fd503e2c64",
-                        "signature": "0x1ca200a432f368e5e5b41e12a5659053b21f7ec6290c5c628efca2c863b5d5251955c6796b0f0fe5b4ac4ade8df3c79047c9e5b0b3b3a1e974ccc5f0940b363ca302"
-                    },
-                    "executionType": "LIMIT"
-                }
-            ]
-        }
-        print(test)
-    
     @property
     def _orderbook_sort_key(self):
 
@@ -872,17 +756,9 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
 
         return {'bids': bids, 'asks': asks}
     
-    
-    # Random endpoint implementations.
-
-
-
-
-    def get_pair_details(self):
-        requested = self.req('get', self.pair_details, no_auth=True)
-        resp = self.resp(requested)
-        for i in resp['symbols']:
-            if i['symbol'] == self.ticker_symbols:
-                return i
             
-        
+    # this is a utility used when formulating eth_calls
+    def sub_bytes(self, i, start=0, end=0):
+        i_str = i 
+        i_sub = i_str[-end * 2: len(i_str) - start * 2]  # get the bytes we need
+        return hex(int(i_sub or '0', 16))  # convert to back int ..or not
