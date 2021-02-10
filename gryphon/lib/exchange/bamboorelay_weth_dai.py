@@ -550,7 +550,6 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
         """
         order_details = self.resp(req)
         oid = '%s' % order_details["orderHash"]
-        # print(order_details)
 
         side = self._order_mode_to_const(order_details["type"])
 
