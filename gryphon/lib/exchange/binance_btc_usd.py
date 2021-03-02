@@ -4,49 +4,8 @@ Binance BTC / USD
 USD is USDC
 
 
-
-
-Error Message Key:
--------------------------
-
-Error message return                    ||  Description 
---------------------------------------------------------------------------------------------------------
-"Filter failure: PRICE_FILTER"	            price is too high, too low, and/or not following
-                                             the tick size rule for the symbol.
-                                             
-"Filter failure: PERCENT_PRICE"	            price is X% too high or X% too low 
-                                             from the average weighted price over the last Y minutes.
-                                             
-"Filter failure: LOT_SIZE"              	quantity is too high, too low, 
-                                             and/or not following the step size rule for the symbol.
-                                             
-"Filter failure: MIN_NOTIONAL"             	price * quantity is too low to be a valid order
-                                             for the symbol.
-
-"Filter failure: ICEBERG_PARTS"	            ICEBERG order would break into too many parts; 
-                                             icebergQty is too small.
-                                             
-"Filter failure: MARKET_LOT_SIZE"	        MARKET order's quantity is too high, too low, 
-                                             and/or not following the step size rule for the symbol.
-                                             
-"Filter failure: MAX_POSITION"	            The account's position has reached the maximum defined limit.
-                                             This is composed of the sum of the balance of the base asset,
-                                             and the sum of the quantity of all open BUYorders.
-                                             
-"Filter failure: MAX_NUM_ORDERS"	        Account has too many open orders on the symbol.
-
-"Filter failure: MAX_ALGO_ORDERS"	        Account has too many open stop loss and/or take profit
-                                             orders on the symbol.
-                                             
-"Filter failure: MAX_NUM_ICEBERG_ORDERS"	Account has too many open iceberg orders on the symbol.
-
-"Filter failure: EXCHANGE_MAX_NUM_ORDERS"	Account has too many open orders on the exchange.
-
-"Filter failure: EXCHANGE_MAX_ALGO_ORDERS"	Account has too many open stop loss and/or take profit 
-                                             orders on the exchange.
-
-
-
+To find LOT SIZE and MIN NOTIONAL limits: 
+https://www.binance.com/api/v1/exchangeInfo
 
 """
 
@@ -97,7 +56,8 @@ class BinanceBTCUSDExchange(ExchangeAPIWrapper):
         self.fiat_balance_tolerance = Money('0.0001', self.currency)
         self.volume_balance_tolerance = Money('0.00000001', self.volume_currency)
         self.max_tick_speed = 1
-        self.min_order_size = Money('0', self.volume_currency)
+        self.min_order_size = Money('0.001', self.volume_currency) 
+        # ^ for btcusd == 1btc to $50k, place_order has more details
         self.use_cached_orderbook = False
 
         self.ping_url = '/wapi/v3/systemStatus.html'
@@ -291,12 +251,26 @@ class BinanceBTCUSDExchange(ExchangeAPIWrapper):
             raise ValueError('price must be in %s' % self.currency)
         if volume.currency != self.volume_currency:
             raise ValueError('volume must be in %s' % self.volume_currency)
+        
+        # min size must be 10$
+        if price != None:
+            print('price not none.')
+            if price.amount * volume.amount < 10.05:
+                print('Too small an order')
+                total = '%.6f' % (price.amount * volume.amount)
+                phrase = 'is less than $10.05, binance\'s min size plus a safety nickel'
+                raise ValueError('%s %s' % (total, phrase))
+            else:
+                total = price.amount * volume.amount
+
+                print('price * vol is sufficiently large: %s' % total)
 
         # Truncate the volume instead of rounding it because it's better# to trade too
         # little than too much.
         volume = volume.round_to_decimal_places(8, rounding=cdecimal.ROUND_DOWN)
 
-        quantity = '%.8f' % volume.amount
+        # round to less than 6 dec places (0.001111 BTC), avoiding LOT_SIZE errors
+        quantity = '%.6f' % volume.amount
         price = '%.2f' % price.amount
         time_in_force = "GTC"
         ord_type = 'LIMIT'
@@ -321,28 +295,12 @@ class BinanceBTCUSDExchange(ExchangeAPIWrapper):
 
     def place_order_resp(self, req):
         """
-            {
-                u'avgPrice': u'0.00000',
-                u'clientOrderId': u'VZleNDFwm62ScMM4hB5FTh',
-                u'closePosition': False,
-                u'cumQty': u'0',
-                u'cumQuote': u'0',
-                u'executedQty': u'0',
-                u'orderId': 5372915335,
-                u'origQty': u'0.030',
-                u'origType': u'LIMIT',
-                u'positionSide': u'BOTH',
-                u'price': u'8000',
-                u'reduceOnly': False,
-                u'side': u'BUY',
-                u'status': u'NEW',
-                u'stopPrice': u'0',
-                u'symbol': u'BTCUSDT',
-                u'timeInForce': u'GTC',
-                u'type': u'LIMIT',
-                u'updateTime': 1593136966400,
-                u'workingType': u'CONTRACT_PRICE'
-            }
+        When btc is ~$50k, min order value is 0.00025 
+        about $12, and no lower!
+        LOT_SIZE== "0.00000100" -- "9000.00000000",
+        StepSize== "0.00000100"
+        MIN_NOTIONAL== $10.00000000
+
 
         """
         resp = self.resp(req)
@@ -351,9 +309,12 @@ class BinanceBTCUSDExchange(ExchangeAPIWrapper):
 
         try: 
             order_id = '%s' % resp['orderId']
+            successed = True
+
         except KeyError:
             successed = False
-        return {'success': True, 'order_id': order_id}
+            order_id = '%s' % resp['msg']
+        return {'success': successed, 'order_id': order_id}
 
             
 

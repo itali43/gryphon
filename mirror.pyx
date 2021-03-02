@@ -147,8 +147,15 @@ class Mirror(Strategy):
         # ask_extra_data = {}
 
         orderbooks = self.get_all_orderbooks()
-        self.harness.log('%s' % orderbooks[self.primary_exchange.name]['bids'][0], color='green')
-        midpoint = self.calculate_global_midpoint(orderbooks)
+        # midpoint = self.calculate_global_midpoint(orderbooks)
+
+        ask_to_mirror = orderbooks[self.primary_exchange.name]['asks'][0]
+        bid_to_mirror = orderbooks[self.primary_exchange.name]['bids'][0]
+
+
+        self.harness.log('%s, %s' % (ask_to_mirror, bid_to_mirror), color='green')
+        self.harness.log('second best, (a, b):', color='red')
+        self.harness.log('%s, %s' % (orderbooks[self.primary_exchange.name]['asks'][1], orderbooks[self.primary_exchange.name]['bids'][1]), color='red')
 
         # bid_price = midpoint - (midpoint * self.spread)
         # ask_price = midpoint + (midpoint * self.spread)
