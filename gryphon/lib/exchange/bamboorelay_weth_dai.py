@@ -51,6 +51,8 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
         self.infura_main_base_url = 'https://mainnet.infura.io/v3/aa86ab760dbc4b08994603ff64545382'
         self.infura_test_base_url = 'https://ropsten.infura.io/v3/aa86ab760dbc4b08994603ff64545382'
 
+        self.exchange_address_main = '0x61935CbDd02287B511119DDb11Aeb42F1593b7Ef' # this is v3, beware v4 approaches
+        self.exchange_address_test =  '0xfb2dd2a1366de37f7241c83d47da58fd503e2c64'
         self.currency = 'DAI'
         self.currency_symbol = 'DAI'  # TODO: Recheck/refactor
         self.volume_currency = 'ETH'
@@ -80,7 +82,7 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
 
         self.position_url = '/positionRisk'
         self.trades_url = '/userTrades'
-        self.order_url = '/order'
+        self.order_url = '/orders'
         self.open_orders_url = '/openOrders'
         self.transactions_url = '/allOrders'
 
@@ -414,7 +416,23 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
             Place Order
             This costs, gas, don't do this so often if one can help it.
         """
+        
+        self.base = ''
+        self._exchange_address = ''
+        self.load_creds()
+        
+        if self.network == 'mainnet':
+            self.base = self.bamboo_main_base_url
+            self._exchange_address = self.exchange_address_main
+        else:
+            self.base = self.bamboo_test_base_url 
+            self._exchange_address = self.exchange_address_test
 
+        url = self.base + self.order_url
+        print(url)
+        print(self._exchange_address)
+        
+        
         # symbol, side, type, timestamp, time in force, quantity
 
         side = self._order_mode_from_const(mode)
@@ -430,7 +448,7 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
 
         quantity = '%.8f' % volume.amount
         price = '%.2f' % price.amount
-        time_in_force = "GTC"
+        time_in_force = 36000 # ten hours
         ord_type = 'LIMIT'
         if order_type == order_types.LIMIT_ORDER:
             ord_type = 'LIMIT'
@@ -440,16 +458,23 @@ class BambooETHDAIExchange(ExchangeAPIWrapper):
             time_in_force = None
             price = None
 
-        params = {
+        payload = {
             "type": ord_type,
             "symbol": self.ticker_symbols,
             "side": side,
             "quantity": quantity,
             "price": price,
-            "timeInForce": time_in_force,
+            "expirationTimeSeconds": time_in_force,
+            "exchangeAddress": self._exchange_address,
+            "makerAddress": self.api_key,
+            
+            # "salt": "99132546",
+            
         }
+        print('8888888888888888888888888888888888888888888')
+        print(params)
 
-        return self.req('post', self.order_url, params=params)
+        return self.req('post', url, data=payload)
 
     def place_order_resp(self, req):
         """
